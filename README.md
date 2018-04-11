@@ -1,2 +1,4 @@
 # statistical-zoning-codes.
-2016年统计用区划代码和城乡划分代码
+Use urllib to crawl the administrative area code of 2016.
+
+pycharm 3.6
