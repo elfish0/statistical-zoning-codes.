@@ -1,0 +1,130 @@
+import re
+import pymysql
+from urllib import request
+import traceback
+import time
+
+
+
+db = pymysql.connect(host='192.168.1.45',port=3306,user='root',password='xx123',db='sapphire',charset='utf8')
+cursor = db.cursor()
+
+def seek(url,reg,area_code,area):
+    reg = re.compile(reg, re.S)
+    req = request.Request(url)
+    try:
+        req.add_header('User-Agent','Mozilla/5.0 (iPod; U; CPU iPhone OS 4_3_2 like Mac OS X; zh-cn) AppleWebKit/533.17.9 (KHTML, like Gecko) Version/5.0.2 Mobile/8H7 Safari/6533.18.5')
+        response = request.urlopen(req)
+    except:
+        req.add_header('User-Agent','Mozilla/5.0 (Linux; Android 4.1.1; Nexus 7 Build/JRO03D) AppleWebKit/535.19 (KHTML, like Gecko) Chrome/18.0.1025.166 Safari/535.19')
+        response = request.urlopen(req)
+    try:
+        result = response.read().decode('gbk')
+    except:
+        result = response.read().decode('utf-8')
+    try:
+        a = dict(re.findall(reg, result))
+        print(a)
+        # print(district_page,'\n',district)
+    except Exception as ex:
+        print(ex, response.read(), '-------------------------------出现错误，已忽略')
+        traceback.print_exc()
+        return
+    for x in range(0, len(a)):
+        sql2 = "insert into area2({},{}) values('{}','{}')".format(area_code,area,list(a.keys())[x],list(a.values())[x])
+        cursor.execute(sql2)  
+        db.commit()
+    return a
+
+
+def getProvince():
+    time.sleep(1)
+    reg = r"<td><a href='(.*?).html'>(.*?)<br/></a></td>"
+    url= 'http://www.stats.gov.cn/tjsj/tjbz/tjyqhdmhcxhfdm/2016/index.html'
+    p = seek(url, reg, 'province_code','province')
+    return p
+
+
+def getMunicipality(province_page):
+    time.sleep(1)
+    reg = r"<tr class='citytr'><td><a href='.*?'>(.*?)</a></td><td><a href='.*?'>(.*?)</a></td></tr>"
+    url = 'http://www.stats.gov.cn/tjsj/tjbz/tjyqhdmhcxhfdm/2016/{}.html'.format(province_page)
+    i = seek(url, reg, 'city_code', 'city')
+    return i
+
+
+def getDistrict(province_page,municipality_page_head):
+    time.sleep(1)
+    reg2_2 = r"<tr class='countytr'><td>(............)</td><td>(.*?)</td></tr>"
+    reg2_2 = re.compile(reg2_2, re.S)
+    reg2 = r"<tr class='countytr'><td><a href='.*?'>(.*?)</a></td><td><a href='.*?'>(.*?)</a></td></tr>"
+    reg2 = re.compile(reg2,re.S)
+    url= 'http://www.stats.gov.cn/tjsj/tjbz/tjyqhdmhcxhfdm/2016/{}/{}.html'.format(province_page,municipality_page_head)
+    req = request.Request(url)
+    try:
+        req.add_header('User-Agent','Mozilla/5.0 (iPod; U; CPU iPhone OS 4_3_2 like Mac OS X; zh-cn) AppleWebKit/533.17.9 (KHTML, like Gecko) Version/5.0.2 Mobile/8H7 Safari/6533.18.5')
+        response = request.urlopen(req)
+    except:
+        req.add_header('User-Agent', 'Mozilla/5.0 (Linux; Android 4.1.1; Nexus 7 Build/JRO03D) AppleWebKit/535.19 (KHTML, like Gecko) Chrome/18.0.1025.166 Safari/535.19')
+        response = request.urlopen(req)
+    try:
+        result2 = response.read().decode('gbk')
+    except:
+        result2 = response.read().decode('utf-8')
+    try:
+        j= dict(re.findall(reg2_2,result2))
+        print('j:        ',j)
+        j2 = dict(re.findall(reg2,result2))
+        j.update(j2)
+        print('j += j2:  ',j)
+    except Exception as ex:
+        print(municipality_page_head,ex,response.read(),'-------------------------------出现错误，已忽略')
+        traceback.print_exc()
+        return
+    for x in range(0,len(j)):
+        sql2 = "insert into area2(county_code,county) values('{}','{}')".format(list(j.keys())[x], list(j.values())[x])
+        cursor.execute(sql2)  
+        db.commit()
+    return j2
+
+
+def getTown(province_page,district_page_end,district_page_body):
+    time.sleep(1)
+    reg = r"<tr class='towntr'><td><a href='.*?'>(.*?)</a></td><td><a href='.*?'>(.*?)</a></td></tr>"
+    url= 'http://www.stats.gov.cn/tjsj/tjbz/tjyqhdmhcxhfdm/2016/{}/{}/{}.html'.format(province_page,district_page_end,district_page_body)
+    k = seek(url, reg, 'town_code', 'town')
+    return k
+
+
+def getVillage(province_page,district_page_end,town_page_end,town_page_body):
+    time.sleep(1)
+    reg = r"<tr class='villagetr'><td>(.*?)</td><td>.*?</td><td>(.*?)</td></tr>"
+    url= 'http://www.stats.gov.cn/tjsj/tjbz/tjyqhdmhcxhfdm/2016/{}/{}/{}/{}.html'.format(province_page,district_page_end,town_page_end,town_page_body)
+    seek(url, reg, 'village_code', 'village')
+
+
+p = getProvince()
+for province_page in p.keys():
+    print(province_page)
+    i = getMunicipality(province_page)
+    print('len Municipality:  ',len(i))
+    # len :15
+    for a in range(0,len(i)):
+        key = list(i.keys())
+        municipality_page_head = key[a][0:4]
+        j= getDistrict(province_page, municipality_page_head)
+        for b in range(0, len(j)):
+            key = list(j.keys())
+            district_page_end = key[b][2:4]
+            district_page_body =key[b][0:6]
+            print('district:  ',district_page_end, district_page_body)
+            k1 = getTown(province_page, district_page_end, district_page_body)
+            for c in range(0,len(k1)):
+                key = list(k1.keys())
+                town_page_end = key[c][4:6]
+                town_page_body = key[c][0:9]
+                getVillage(province_page, district_page_end, town_page_end, town_page_body)
+    time.sleep(10)
+
+cursor.close()
+db.close()
